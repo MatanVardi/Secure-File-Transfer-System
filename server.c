@@ -3,13 +3,12 @@
 int main(int argc, char const *argv[])
 {
     WSADATA wsa;
-    if (WSASTARTUP(MAKEWORD(2, 2), &wsa) != 0)
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
     {
         printf("Failed. Error Code: %d", WSAGetLastError());
         return -1;
     }
     int server_sock_d = socket(AF_INET, SOCK_STREAM, 0);
-    char serMsg[255];
 
     struct sockaddr_in serv_addr;
 
@@ -27,13 +26,34 @@ int main(int argc, char const *argv[])
     {
         int client_socket = accept(server_sock_d, NULL, NULL);
 
-        char buffer[255];
-        int bytes = recv(client_socket, buffer, sizeof(buffer), 0);
-        if (bytes > 0)
+        int file_size = 0;
+        recv(client_socket, (char *)&file_size, sizeof(int), 0);
+        char *file_data = malloc(file_size);
+        int received = 0;
+        while (received < file_size)
         {
-            buffer[bytes] = '\0';
-            printf("Client sent: %s\n", buffer);
+            int r = recv(client_socket, file_data + received, file_size - received, 0);
+            if (r <= 0)
+            {
+                break;
+            }
+            received += r;
         }
+
+        unsigned long long key = ENCRYPTION_KEY;
+        unsigned char *key_bytes = (unsigned char *)&key;
+        for (int i = 0; i < received; i++)
+        {
+            file_data[i] ^= key_bytes[i % 8];
+        }
+
+        FILE *f = fopen("received_file", "wb");
+        fwrite(file_data, 1, received, f);
+        fclose(f);
+
+        printf("Received %d bytes, saved as 'received_file\n", received);
+        free(file_data);
+        closesocket(client_socket);
     }
     closesocket(server_sock_d);
     WSACleanup();
